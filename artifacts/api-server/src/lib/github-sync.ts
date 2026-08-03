@@ -3,7 +3,7 @@ import https from "https";
 import http from "http";
 
 const DEFAULT_BACKOFF_MS = 5 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 let githubBackoffUntil = 0;
 let lastBackoffNoticeAt = 0;

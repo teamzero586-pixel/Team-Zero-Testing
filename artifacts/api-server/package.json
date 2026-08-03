@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "export NODE_ENV=development && npm run build && npm run start",
     "build": "node ./build.mjs",
-    "start": "killall node || true; fuser -k 3000/tcp || true; sleep 2; node --enable-source-maps ./dist/index.mjs",
+    "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

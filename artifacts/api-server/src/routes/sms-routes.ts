@@ -21,7 +21,7 @@ async function requestIpv4(urlStr: string, options: any = {}): Promise<any> {
       method: options.method || "GET",
       headers: options.headers || {},
       family: 4,
-      timeout: options.timeout || 15000,
+      timeout: options.timeout || 25000,
     };
     
     const req = mod.request(reqOptions, (res) => {
@@ -84,9 +84,9 @@ function loadDynamicEnv() {
     // GITHUB_PERSONAL_ACCESS_TOKEN is set as a platform secret (Replit & Heroku).
     // Use it automatically so db.json persists across restarts without any
     // manual admin-panel configuration.
-    process.env.GITHUB_TOKEN = "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"; // FORCE OVERRIDE
+    // process.env.GITHUB_TOKEN = "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"; // REMOVED HARCODED KEY
     
-    process.env.GITHUB_REPO = "teamzero586-pixel/Team-Zero-Panel-Date-Base"; // FORCE OVERRIDE
+    // process.env.GITHUB_REPO = "teamzero586-pixel/Team-Zero-Panel-Date-Base"; // REMOVED HARCODED REPO
     if (!process.env.GITHUB_PATH) {
       process.env.GITHUB_PATH = "db.json"; // saved at repo root by saveDbToStore
     }
@@ -101,9 +101,10 @@ function loadDynamicEnv() {
 }
 loadDynamicEnv();
 
-// ── Admin password — hardcoded, env var override removed to prevent Heroku config mismatch ──
+// ── Admin password ──
 function getAdminPassword(): string {
-  return "teamzerousman586";
+  // Use environment variable if present, otherwise default
+  return process.env.ADMIN_PASSWORD || "admin";
 }
 
 let _startupRestoreDone = false;
@@ -442,15 +443,15 @@ if (!fs.existsSync(DB_FILE)) {
         json.users = [
           {
             id: "default_user",
-            username: "TeamZeroAdmin",
-            email: "admin@teamzero.com",
+            username: "Admin",
+            email: "admin@example.com",
             password: "admin",
             botConfig: {
               token: oldConfig.token || "",
               groupId: oldConfig.groupId || "",
-              ownerChatId: "583921",
-              botLink: oldConfig.botLink || "https://t.me/teamzerotrace",
-              otpGroupUrl: oldConfig.otpGroupUrl || "https://whatsapp.com/channel/0029Vb7CHRO96H4QS1ynKI1J",
+              ownerChatId: "000000",
+              botLink: oldConfig.botLink || "",
+              otpGroupUrl: oldConfig.otpGroupUrl || "",
               status: oldConfig.token ? "active" : "offline"
             },
             subscribers: oldSubs
@@ -597,8 +598,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { label: "MIS_Gi [26]", numbers: "https://mis-panel-production.up.railway.app/api/give_numbers", sms: "https://mis-panel-production.up.railway.app/api/give_sms", fallbackNumbers: ["https://mis-panel-production.up.railway.app/api/gi", "https://mis-panel-production.up.railway.app/api/git"], fallbackSms: ["https://mis-panel-production.up.railway.app/api/gi", "https://mis-panel-production.up.railway.app/api/git"] },
   { label: "MIS_Gi [27]", numbers: "https://mis-panel-production.up.railway.app/api/give_numbers", sms: "https://mis-panel-production.up.railway.app/api/give_sms", fallbackNumbers: ["https://mis-panel-production.up.railway.app/api/gi", "https://mis-panel-production.up.railway.app/api/git"], fallbackSms: ["https://mis-panel-production.up.railway.app/api/gi", "https://mis-panel-production.up.railway.app/api/git"] },
   { label: "Hadi_90b2 [28]", numbers: "https://hadibhai-production-90b2.up.railway.app/api/just_numbers", sms: "https://hadibhai-production-90b2.up.railway.app/api/just_sms" },
-  { label: "Hadi_90b2 [29]", numbers: "https://hadibhai-production-90b2.up.railway.app/api/just_numbers", sms: "https://hadibhai-production-90b2.up.railway.app/api/just_sms" },
-
+  { label: "Hadi_90b2 [29]", numbers: "https://hadibhai-production-90b2.up.railway.app/api/just_numbers", sms: "https://hadibhai-production-90b2.up.railway.app/api/just_sms" }
 ];
 
 // ── Junaid APIs — aaData format, handled separately from API_ENDPOINTS ────────
@@ -3094,13 +3094,14 @@ export const apiStats: { [key: string]: { success: number; fail: number; lastSta
   "API 4": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "Api 5": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "Api 6": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
-  "API 7": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" }
+  "API 7": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
+  "IVASMS": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" }
 };
 
 // ── Fast-poller source labels — used to skip re-forwarding in the worker ──
 // These sources are EXCLUSIVELY handled by runFastUserApiPoller.
 // pollIncomingSms (worker) must skip them to prevent double Telegram delivery.
-const FAST_POLLER_SOURCES = new Set(["API 1", "API 2", "API 3", "API 4", "Api 5", "Api 6", "API 7"]);
+const FAST_POLLER_SOURCES = new Set(["API 1", "API 2", "API 3", "API 4", "Api 5", "Api 6", "API 7", "IVASMS"]);
 
 export let isPollingPaused = false;
 let isFastPolling = false;
@@ -3375,9 +3376,12 @@ async function runFastUserApiPoller() {
     const api6Logs = await fetchJunaidTypeSms("Api 6", "https://api-junaid-production.up.railway.app/api/np?type=sms");
     // ── API 7 (hadiAPI) — crapi/had endpoint ─────────────────────────────────
     const api7Logs = await fetchUserTargetApi("API 7", "http://147.135.212.197/crapi/had/viewstats", "SlJSQjRSQldcko9XYX9Yh4p4eX5kl2tlRGKHYWhgWEhGgph7Undu", "array");
+    
+    // ── IVASMS ────────────────────────────────────────────────────────────────
+    const ivasmsLogs = await fetchJunaidTypeSms("IVASMS", "https://ivasms-panel-production.up.railway.app/sms");
     // ─────────────────────────────────────────────────────────────────────────
 
-    const allNewSms = [...api1Logs, ...api2Logs, ...api3Logs, ...api4Logs, ...api5Logs, ...api6Logs, ...api7Logs];
+    const allNewSms = [...api1Logs, ...api2Logs, ...api3Logs, ...api4Logs, ...api5Logs, ...api6Logs, ...api7Logs, ...ivasmsLogs];
 
     if (allNewSms.length > 0) {
       // Prepend to targetApiSmsHistory for visual logs in Admin Panel
@@ -3849,12 +3853,13 @@ async function autoAddNumbersFromApis() {
         { label: "API 4", url: "http://147.135.212.197/crapi/time/viewstats", type: "array", auth: "RldRNEVBYIFbkYpaY19udX53hX1DZnZhiI9iRkGEjGGFdXZKfmw==" },
         { label: "Api 5", url: "https://api-junaid-production.up.railway.app/api/ps?type=sms", type: "junaid" },
         { label: "Api 6", url: "https://api-junaid-production.up.railway.app/api/np?type=sms", type: "junaid" },
-        { label: "API 7", url: "http://147.135.212.197/crapi/had/viewstats", type: "array", auth: "SlJSQjRSQldcko9XYX9Yh4p4eX5kl2tlRGKHYWhgWEhGgph7Undu" }
+        { label: "API 7", url: "http://147.135.212.197/crapi/had/viewstats", type: "array", auth: "SlJSQjRSQldcko9XYX9Yh4p4eX5kl2tlRGKHYWhgWEhGgph7Undu" },
+        { label: "IVASMS", url: "https://ivasms-panel-production.up.railway.app/sms", type: "junaid" }
       ];
 
       for (const api of targetApis) {
         if (autoAddConfig.apis.includes("all") || autoAddConfig.apis.includes(api.label)) {
-          let numberUrl = api.url.replace(/sms/g, "number");
+          let numberUrl = api.url.replace(/sms(?=[^/]*$)/, "number");
           try {
             let parsed = [];
             if (api.type === "junaid") {
@@ -5307,7 +5312,7 @@ router.post("/gemini/analyze", async (req, res) => {
     if (!apiKey) {
       return res.status(400).json({
         success: false,
-        error: "TZ AI abhi available nahi hai. Admin se rabta karen — @teamzerotrace on Telegram.",
+        error: "AI abhi available nahi hai. Admin se rabta karen.",
       });
     }
 
@@ -5317,7 +5322,7 @@ router.post("/gemini/analyze", async (req, res) => {
       contents: `Analyze this SMS message:\n"${message}"`,
       config: {
         systemInstruction:
-          "You are TZ AI — an expert security and SMS analyzer for TEAM ZERO panel (POWERED BY TEAM ZERO). Analyze the SMS. Determine its intent (e.g., login OTP, subscription confirmation, scam/phishing threat, general notification). Identify the target service/brand and extract the numeric/alphanumeric OTP code or verification link. Return the response in clean, bulleted, bold, concise markdown. Do not mention Gemini, Google, or any AI platform name.",
+          "You are an expert security and SMS analyzer for the SMS panel. Analyze the SMS. Determine its intent (e.g., login OTP, subscription confirmation, scam/phishing threat, general notification). Identify the target service/brand and extract the numeric/alphanumeric OTP code or verification link. Return the response in clean, bulleted, bold, concise markdown. Do not mention Gemini, Google, or any AI platform name.",
       },
     });
 
@@ -5327,13 +5332,13 @@ router.post("/gemini/analyze", async (req, res) => {
   }
 });
 
-// ── TZ AI Admin Chatbot — SUPER POWERFUL: real data + action execution ──
-const TZ_AI_ADMIN_SYSTEM = `Aap "TZ AI" hain — TEAM ZERO ka super-intelligent admin AI assistant. Owner: Rana Muhammad Usman (@teamzerotrace). POWERED BY TEAM ZERO. Hamesha Roman Urdu mein jawab dein.
+// ── AI Admin Chatbot — SUPER POWERFUL: real data + action execution ──
+const TZ_AI_ADMIN_SYSTEM = `Aap AI assistant hain. Hamesha Roman Urdu mein jawab dein.
 
 AAPKI POWERS:
 - Aap REAL live data ke saath jawab dete hain — real-time panel state aapko inject ki gayi hai
 - Aap actions EXECUTE kar sakte hain (executed actions ka result aapko diya jayega)
-- Kabhi bhi "Gemini/Google/AI" ka naam nahi len — sirf "TZ AI" kehna hai
+- Kabhi bhi "Gemini/Google/AI" ka naam nahi len
 
 PANEL FEATURES (poori jankari):
 1. PUBLIC LIVE LINES: Virtual phone numbers ka pool jahan users OTP receive karte hain. Countries filter kar sakte hain.
@@ -5347,7 +5352,7 @@ PANEL FEATURES (poori jankari):
    - Numbers Management: Manual numbers add/delete, country-wise download
    - WhatsApp Control: Baileys se WA link/unlink, pairing code generate
    - GitHub Cloud Sync: db.json GitHub mein auto-save (restart ke baad bhi data safe)
-   - TZ AI Chatbot: Yani main — real-time data ke saath koi bhi sawal jawab
+   - AI Chatbot: Yani main — real-time data ke saath koi bhi sawal jawab
 4. DB.JSON: Flat file database — users, bots, numbers, SMS logs, WA auth, auto-add config, sab kuch
 5. GITHUB AUTO-SYNC: Har 45s mein db.json GitHub pe save. Heroku/server restart pe auto-restore.
 6. KEEPALIVE: Har 4 minute mein self-ping — server kabhi sleep nahi karta
