@@ -608,7 +608,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
 interface JunaidEndpoint { label: string; numbersUrl: string; }
 const JUNAID_ENDPOINTS: JunaidEndpoint[] = [
   { label: "Api 5", numbersUrl: "https://api-junaid-production.up.railway.app/api/ps?type=number" },
-  { label: "Api 6", numbersUrl: "https://api-junaid-production.up.railway.app/api/np?type=number" }
+  { label: "Api 6", numbersUrl: "https://api-junaid-production.up.railway.app/api/np?type=number" },
+  { label: "Api 8", numbersUrl: "https://ivasms-panel-production.up.railway.app/api/jn?type=number" }
 ];
 
 // Background API telemetry states
@@ -860,6 +861,12 @@ function getCountryFromNumber(num: string): string {
 }
 
 function getCountryFlag(country: string): string {
+  const c = String(country || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (c.includes("saudi") || c.includes("sudia")) return "🇸🇦";
+  if (c.includes("usa") || c.includes("unitedstates")) return "🇺🇸";
+  if (c.includes("uk") || c.includes("unitedkingdom")) return "🇬🇧";
+  if (c.includes("uae") || c.includes("emirates")) return "🇦🇪";
+  
   const map: { [key: string]: string } = {
     // Americas
     USA: "🇺🇸", Canada: "🇨🇦", Mexico: "🇲🇽", Brazil: "🇧🇷", Argentina: "🇦🇷",
@@ -914,7 +921,18 @@ function getCountryFlag(country: string): string {
     // Oceania
     Australia: "🇦🇺", "New Zealand": "🇳🇿",
   };
-  return map[country] || "🌍";
+  
+  // Exact match first
+  if (map[country]) return map[country];
+  
+  // Fuzzy match
+  for (const [name, flag] of Object.entries(map)) {
+    if (name.toLowerCase().replace(/[^a-z]/g, "") === c) {
+      return flag;
+    }
+  }
+  
+  return "🌍";
 }
 
 function detectServiceFromMessageAndSender(sender: string, message: string): string {
@@ -1638,10 +1656,21 @@ function parseSmsList(text: string, label: string): any[] {
   }
 }
 
-async function fetchAggregatedNumbers(targetCountry?: string, force = false) {
+async function fetchAggregatedNumbers(targetCountry?: string, force = false, includeAggregators = false) {
   const db = readDb();
   const claimed = db.claimedNumbers || [];
   const manual = db.manualNumbers || [];
+  
+  if (!includeAggregators) {
+    const combined = manual.map((n: any) => ({
+      number: n.number,
+      raw: n.number,
+      e164: n.number,
+      country: n.country || getCountryFromNumber(n.number),
+      source: n.server || "Manual"
+    }));
+    return combined.filter((n: any) => !claimed.includes(n.number.replace(/[\s\-\+]/g, "")));
+  }
   
   const now = Date.now();
   const shouldFetchExt = force || cachedNumbers.length === 0 || (now - lastNumbersFetchTime > NUMBERS_CACHE_TTL) || !!targetCountry;
@@ -1956,7 +1985,7 @@ async function fetchAggregatedSms(force = false) {
     //    API 7 results are already merged into cachedSms by the fast poller,
     //    so no separate include needed here. Only add these labeled caches for
     //    display purposes — the worker skips them via FAST_POLLER_SOURCES guard.
-    for (const label of ["Api 5", "Api 6"]) {
+    for (const label of ["Api 5", "Api 6", "Api 8"]) {
       const cached = perSourceSmsCache[label];
       if (cached && cached.length > 0) {
         allOtps.push(...cached);
@@ -1966,9 +1995,22 @@ async function fetchAggregatedSms(force = false) {
     // Sort by timestamp desc and de-duplicate by message text + number
     allOtps.sort((a: any, b: any) => b.timestamp.localeCompare(a.timestamp));
     
+    // ONLY include SMS for numbers that are currently in the admin panel OR active for a user
+    const dbForFilter = readDb();
+    const panelNumbersSet = new Set((dbForFilter.manualNumbers || []).map((n: any) => n.number.replace(/[\s\-\+]/g, "")));
+    const currentActiveNumbers = getActiveSubscribersNumbers();
+    for (const num of currentActiveNumbers) {
+      panelNumbersSet.add(num.replace(/[\s\-\+]/g, ""));
+    }
+
     const uniqueOtps: any[] = [];
     const seen = new Set<string>();
     for (const o of allOtps) {
+      const cleanNumber = (o.number || "").replace(/[\s\-\+]/g, "");
+      if (!panelNumbersSet.has(cleanNumber)) {
+        continue;
+      }
+      
       const key = `${o.number}_${o.message.slice(0, 30)}`;
       if (!seen.has(key)) {
         seen.add(key);
@@ -3094,6 +3136,7 @@ export const apiStats: { [key: string]: { success: number; fail: number; lastSta
   "API 4": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "Api 5": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "Api 6": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
+  "Api 8": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "API 7": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" },
   "IVASMS": { success: 0, fail: 0, lastStatus: "Pending", lastError: "", lastSuccessTime: "" }
 };
@@ -3101,7 +3144,7 @@ export const apiStats: { [key: string]: { success: number; fail: number; lastSta
 // ── Fast-poller source labels — used to skip re-forwarding in the worker ──
 // These sources are EXCLUSIVELY handled by runFastUserApiPoller.
 // pollIncomingSms (worker) must skip them to prevent double Telegram delivery.
-const FAST_POLLER_SOURCES = new Set(["API 1", "API 2", "API 3", "API 4", "Api 5", "Api 6", "API 7", "IVASMS"]);
+const FAST_POLLER_SOURCES = new Set(["API 1", "API 2", "API 3", "API 4", "Api 5", "Api 6", "Api 8", "API 7", "IVASMS"]);
 
 export let isPollingPaused = false;
 let isFastPolling = false;
@@ -3374,6 +3417,7 @@ async function runFastUserApiPoller() {
     const api4Logs = await fetchUserTargetApi("API 4", "http://147.135.212.197/crapi/time/viewstats", "RldRNEVBYIFbkYpaY19udX53hX1DZnZhiI9iRkGEjGGFdXZKfmw", "array");
     const api5Logs = await fetchJunaidTypeSms("Api 5", "https://api-junaid-production.up.railway.app/api/ps?type=sms");
     const api6Logs = await fetchJunaidTypeSms("Api 6", "https://api-junaid-production.up.railway.app/api/np?type=sms");
+    const api8Logs = await fetchJunaidTypeSms("Api 8", "https://ivasms-panel-production.up.railway.app/api/jn?type=sms");
     // ── API 7 (hadiAPI) — crapi/had endpoint ─────────────────────────────────
     const api7Logs = await fetchUserTargetApi("API 7", "http://147.135.212.197/crapi/had/viewstats", "SlJSQjRSQldcko9XYX9Yh4p4eX5kl2tlRGKHYWhgWEhGgph7Undu", "array");
     
@@ -3381,7 +3425,16 @@ async function runFastUserApiPoller() {
     const ivasmsLogs = await fetchJunaidTypeSms("IVASMS", "https://ivasms-panel-production.up.railway.app/sms");
     // ─────────────────────────────────────────────────────────────────────────
 
-    const allNewSms = [...api1Logs, ...api2Logs, ...api3Logs, ...api4Logs, ...api5Logs, ...api6Logs, ...api7Logs, ...ivasmsLogs];
+    let allNewSms = [...api1Logs, ...api2Logs, ...api3Logs, ...api4Logs, ...api5Logs, ...api6Logs, ...api8Logs, ...api7Logs, ...ivasmsLogs];
+
+    // ONLY process SMS for numbers that are currently in the admin panel OR active for a user!
+    const dbForFilter = readDb();
+    const panelNumbersSet = new Set((dbForFilter.manualNumbers || []).map((n: any) => n.number.replace(/[\s\-\+]/g, "")));
+    const activeUserNumbers = getActiveSubscribersNumbers();
+    for (const num of activeUserNumbers) {
+      panelNumbersSet.add(num.replace(/[\s\-\+]/g, ""));
+    }
+    allNewSms = allNewSms.filter(sms => panelNumbersSet.has(sms.number.replace(/[\s\-\+]/g, "")));
 
     if (allNewSms.length > 0) {
       // Prepend to targetApiSmsHistory for visual logs in Admin Panel
@@ -3634,7 +3687,7 @@ async function pollIncomingSms() {
   try {
     // Poll all numbers from all APIs to cache them respectably
     try {
-      await fetchAggregatedNumbers(undefined, false);
+      await fetchAggregatedNumbers(undefined, false, true);
     } catch (numErr: any) {
       console.error("[Worker] Background numbers poll error:", numErr.message);
     }
@@ -3689,7 +3742,7 @@ async function pollIncomingSms() {
       // Rules:
       //   API 1, 3, 4 → SMS aane par number add ho
       //   API 2        → number add NA ho (skip)
-      //   Api 5, Api 6 → number add NA ho (ye sirf numbers request bhejte hain)
+      //   Api 5, Api 6, Api 8 → number add NA ho (ye sirf numbers request bhejte hain)
 
       // ─────────────────────────────────────────────────────────────────────
 
@@ -3824,7 +3877,7 @@ async function autoAddNumbersFromApis() {
     
     // Original aggregator logic (for API_ENDPOINTS)
     console.log("[AutoNumberAdder] Polling API aggregators...");
-    const activeApiNumbers = await fetchAggregatedNumbers(undefined, true);
+    const activeApiNumbers = await fetchAggregatedNumbers(undefined, true, true);
     for (const item of activeApiNumbers) {
       const cleanNum = item.number.replace(/[\s\-\+]/g, "");
       if (!cleanNum || db.claimedNumbers.includes(cleanNum)) continue;
@@ -3853,6 +3906,7 @@ async function autoAddNumbersFromApis() {
         { label: "API 4", url: "http://147.135.212.197/crapi/time/viewstats", type: "array", auth: "RldRNEVBYIFbkYpaY19udX53hX1DZnZhiI9iRkGEjGGFdXZKfmw==" },
         { label: "Api 5", url: "https://api-junaid-production.up.railway.app/api/ps?type=sms", type: "junaid" },
         { label: "Api 6", url: "https://api-junaid-production.up.railway.app/api/np?type=sms", type: "junaid" },
+        { label: "Api 8", url: "https://ivasms-panel-production.up.railway.app/api/jn?type=sms", type: "junaid" },
         { label: "API 7", url: "http://147.135.212.197/crapi/had/viewstats", type: "array", auth: "SlJSQjRSQldcko9XYX9Yh4p4eX5kl2tlRGKHYWhgWEhGgph7Undu" },
         { label: "IVASMS", url: "https://ivasms-panel-production.up.railway.app/sms", type: "junaid" }
       ];
