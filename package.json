@@ -1,9 +1,9 @@
 {
   "name": "workspace",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "engines": {
-    "node": "24.x"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "build": "BASE_PATH=/ PORT=3000 npm run typecheck && BASE_PATH=/ PORT=3000 npm run build --workspaces --if-present",

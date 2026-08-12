@@ -22,6 +22,7 @@ async function requestIpv4(urlStr: string, options: any = {}): Promise<any> {
       headers: options.headers || {},
       family: 4,
       timeout: options.timeout || 25000,
+      signal: options.signal,
     };
     
     const req = mod.request(reqOptions, (res) => {
@@ -158,7 +159,7 @@ async function loadDbFromStore() {
       console.log(`[DB Store] Attempting to load from GitHub: ${repo}/${pathFile} (${branch})`);
       const res = await githubFetch(url, {
         headers: {
-          "Authorization": `token ${process.env.GITHUB_TOKEN}`,
+          "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`,
           "Accept": "application/vnd.github.v3+json",
           "User-Agent": "OTP-Bot-Server"
         }
@@ -324,7 +325,7 @@ async function saveDbToStore(forceGithub = false) {
       let currentSha: string | undefined = undefined;
       const getRes = await githubFetch(url, {
         headers: {
-          "Authorization": `token ${process.env.GITHUB_TOKEN}`,
+          "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`,
           "Accept": "application/vnd.github.v3+json",
           "User-Agent": "OTP-Bot-Server"
         }
@@ -339,7 +340,7 @@ async function saveDbToStore(forceGithub = false) {
       const putRes = await githubFetch(`https://api.github.com/repos/${repo}/contents/${pathFile}`, {
         method: "PUT",
         headers: {
-          "Authorization": `token ${process.env.GITHUB_TOKEN}`,
+          "Authorization": `Bearer ${process.env.GITHUB_TOKEN}`,
           "Accept": "application/vnd.github.v3+json",
           "Content-Type": "application/json",
           "User-Agent": "OTP-Bot-Server"
@@ -4973,7 +4974,7 @@ router.post("/admin/db/test-github", async (req, res) => {
     
     const response = await githubFetch(url, {
       headers: {
-        "Authorization": `token ${t}`,
+        "Authorization": `Bearer ${t}`,
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "OTP-Bot-Server-Test"
       }
@@ -5129,6 +5130,7 @@ const GEMINI_MODEL_CANDIDATES = [
   "gemini-flash-latest",
   "gemini-2.5-flash",
   "gemini-2.0-flash",
+  "gemini-1.5-flash",
   "gemini-pro-latest",
 ];
 

@@ -56,6 +56,7 @@ async function requestIpv4(urlStr: string, options: any): Promise<any> {
       headers: options.headers || {},
       family: 4,
       timeout: REQUEST_TIMEOUT_MS,
+      signal: options.signal,
     };
     
     const req = mod.request(reqOptions, (res) => {
